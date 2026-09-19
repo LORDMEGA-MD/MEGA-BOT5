@@ -12,7 +12,7 @@ const settings = {
   storeWriteInterval: 10000,
   description: "This is a bot for managing group commands and automating tasks.",
   version: "5.0",
-  updateZipUrl: "https://github.com/LORDMEGA-MD/MegaBot/archive/refs/heads/main.zip"
+  updateZipUrl: "https://github.com/LORDMEGA-MD/MEGA-BOT5/archive/refs/heads/main.zip"
 };
 
 _0xb7ef = 729964 ^ 729957; // = 13 (just a useless obfuscation trick)
