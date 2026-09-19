@@ -26,15 +26,49 @@ async function tryRequest(getter, attempts = 3) {
 
 // EliteProTech API - Primary
 async function getEliteProTechVideoByUrl(youtubeUrl) {
-    const apiUrl = `https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(youtubeUrl)}&format=mp4`;
+    const apiUrl = `https://eliteprotech-apis.zone.id/download/ytdown?url=${encodeURIComponent(youtubeUrl)}&format=mp4`;
     const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
-    if (res?.data?.success && res?.data?.downloadURL) {
+    const data = res?.data;
+    console.log('[video] EliteProTech response:', JSON.stringify(data));
+
+    // Current/expected response
+    if (data?.success && data?.downloadURL) {
         return {
-            download: res.data.downloadURL,
-            title: res.data.title
+            download: data.downloadURL,
+            title: data.title || null
         };
     }
-    throw new Error('EliteProTech ytdown returned no download');
+
+    // Handle alternative response shapes without breaking immediately
+    const download =
+        data?.downloadURL ||
+        data?.download_url ||
+        data?.url ||
+        data?.dl ||
+        data?.data?.downloadURL ||
+        data?.data?.download_url ||
+        data?.data?.url ||
+        data?.data?.dl ||
+        data?.result?.mp4 ||
+        data?.result?.download ||
+        data?.result?.url;
+
+    if (download) {
+        return {
+            download,
+            title:
+                data?.title ||
+                data?.data?.title ||
+                data?.result?.title ||
+                null
+        };
+    }
+
+    throw new Error(
+        `EliteProTech returned no download URL: ${
+            typeof data === 'string' ? data : JSON.stringify(data)
+        }`
+    );
 }
 
 async function getYupraVideoByUrl(youtubeUrl) {
@@ -176,4 +210,4 @@ async function videoCommand(sock, chatId, message) {
     }
 }
 
-module.exports = videoCommand; 
+module.exports = videoCommand;
