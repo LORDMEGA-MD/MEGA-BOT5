@@ -153,48 +153,70 @@ function resolveQueries(message) {
 }
 
 // ---------------------------------------------------------------------------
-// Download source APIs
+// EliteProTech Download API
 // ---------------------------------------------------------------------------
-
 async function getEliteProTechDownloadByUrl(youtubeUrl) {
-	const apiUrl = `https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(youtubeUrl)}&format=mp3`;
-	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
-	if (res?.data?.success && res?.data?.downloadURL) {
-		return { download: res.data.downloadURL, title: res.data.title };
-	}
-	throw new Error('EliteProTech ytdown returned no download');
-}
+	const apiUrl =
+		`https://eliteprotech-apis.zone.id/download/ytdown?url=${encodeURIComponent(youtubeUrl)}&format=mp3`;
+	const res = await tryRequest(() =>
+		axios.get(apiUrl, AXIOS_DEFAULTS)
+	);
+	const data = res?.data;
+	console.log('[song] EliteProTech response:', JSON.stringify(data));
 
-async function getYupraDownloadByUrl(youtubeUrl) {
-	const apiUrl = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
-	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
-	if (res?.data?.success && res?.data?.data?.download_url) {
+	// Current/expected response
+	if (data?.success && data?.downloadURL) {
 		return {
-			download: res.data.data.download_url,
-			title: res.data.data.title,
-			thumbnail: res.data.data.thumbnail
+			download: data.downloadURL,
+			title: data.title || null,
+			thumbnail: data.thumbnail || data.thumb || null
 		};
 	}
-	throw new Error('Yupra returned no download');
-}
 
-async function getOkatsuDownloadByUrl(youtubeUrl) {
-	const apiUrl = `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
-	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
-	if (res?.data?.dl) {
+	// Handle alternative response shapes without breaking immediately
+	const download =
+		data?.downloadURL ||
+		data?.download_url ||
+		data?.url ||
+		data?.dl ||
+		data?.data?.downloadURL ||
+		data?.data?.download_url ||
+		data?.data?.url ||
+		data?.data?.dl;
+
+	if (download) {
 		return {
-			download: res.data.dl,
-			title: res.data.title,
-			thumbnail: res.data.thumb
+			download,
+			title:
+				data?.title ||
+				data?.data?.title ||
+				null,
+			thumbnail:
+				data?.thumbnail ||
+				data?.thumb ||
+				data?.data?.thumbnail ||
+				data?.data?.thumb ||
+				null
 		};
 	}
-	throw new Error('Okatsu ytmp3 returned no download');
+
+	throw new Error(
+		`EliteProTech returned no download URL: ${
+			typeof data === 'string'
+				? data
+				: JSON.stringify(data)
+		}`
+	);
 }
 
+// ---------------------------------------------------------------------------
+// Download source
+// ---------------------------------------------------------------------------
 const API_METHODS = [
-	{ name: 'EliteProTech', method: (url) => getEliteProTechDownloadByUrl(url) },
-	{ name: 'Yupra',        method: (url) => getYupraDownloadByUrl(url)        },
-	{ name: 'Okatsu',       method: (url) => getOkatsuDownloadByUrl(url)       }
+	{
+		name: 'EliteProTech',
+		method: getEliteProTechDownloadByUrl
+	}
 ];
 
 // ---------------------------------------------------------------------------
