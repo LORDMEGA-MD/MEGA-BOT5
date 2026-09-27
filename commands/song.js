@@ -153,32 +153,30 @@ function resolveQueries(message) {
 }
 
 // ---------------------------------------------------------------------------
-// EliteProTech Download API
+// EliteProTech ytmp3 Download API
 // ---------------------------------------------------------------------------
+
+const YTMP3_QUALITY = 128;
+
 async function getEliteProTechDownloadByUrl(youtubeUrl) {
 	const apiUrl =
-		`https://eliteprotech-apis.zone.id/download/ytdown?url=${encodeURIComponent(youtubeUrl)}&format=mp3`;
+		`https://eliteprotech-apis.zone.id/download/ytmp3?url=${encodeURIComponent(youtubeUrl)}&quality=${YTMP3_QUALITY}`;
 	const res = await tryRequest(() =>
 		axios.get(apiUrl, AXIOS_DEFAULTS)
 	);
 	const data = res?.data;
-	console.log('[song] EliteProTech response:', JSON.stringify(data));
+	console.log('[song] EliteProTech (ytmp3) response:', JSON.stringify(data));
 
-	// Current/expected response
-	if (data?.success && data?.downloadURL) {
-		return {
-			download: data.downloadURL,
-			title: data.title || null,
-			thumbnail: data.thumbnail || data.thumb || null
-		};
-	}
-
-	// Handle alternative response shapes without breaking immediately
+	// Defensive extraction — actual field names unconfirmed, check common shapes.
 	const download =
 		data?.downloadURL ||
 		data?.download_url ||
 		data?.url ||
 		data?.dl ||
+		data?.result?.downloadURL ||
+		data?.result?.download_url ||
+		data?.result?.url ||
+		data?.result?.dl ||
 		data?.data?.downloadURL ||
 		data?.data?.download_url ||
 		data?.data?.url ||
@@ -189,11 +187,14 @@ async function getEliteProTechDownloadByUrl(youtubeUrl) {
 			download,
 			title:
 				data?.title ||
+				data?.result?.title ||
 				data?.data?.title ||
 				null,
 			thumbnail:
 				data?.thumbnail ||
 				data?.thumb ||
+				data?.result?.thumbnail ||
+				data?.result?.thumb ||
 				data?.data?.thumbnail ||
 				data?.data?.thumb ||
 				null
@@ -201,7 +202,7 @@ async function getEliteProTechDownloadByUrl(youtubeUrl) {
 	}
 
 	throw new Error(
-		`EliteProTech returned no download URL: ${
+		`EliteProTech (ytmp3) returned no download URL: ${
 			typeof data === 'string'
 				? data
 				: JSON.stringify(data)
