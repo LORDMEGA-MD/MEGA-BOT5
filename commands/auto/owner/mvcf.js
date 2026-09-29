@@ -6,10 +6,14 @@
 // current group (resolves @lid ids to phone numbers) and exports them.
 //
 // Usage:
-//   .mvcf            -> sends a .vcf contacts file (import straight into phone)
-//   .mvcf list       -> prints "name - number" as a text message
-//   .mvcf txt        -> sends a plain .txt file, one number per line
-//   .mvcf admins     -> only admins (can combine: .mvcf admins list)
+// Each command sends exactly ONE output.
+//
+//   .mvcf              -> .vcf file of all members
+//   .mvcf list         -> text list of all members ("name - number")
+//   .mvcf txt          -> .txt file of all members, one number per line
+//   .mvcf admins       -> text list of admins only (no file)
+//   .mvcf admins vcf   -> .vcf file of admins only
+//   .mvcf admins txt   -> .txt file of admins only
 //
 // Number resolution, in order:
 //   1. participant.phoneNumber / participant.jid (Baileys v7)
@@ -222,6 +226,15 @@ module.exports = async function (sock, chatId, message, args) {
 
     const modes = (args || []).map(a => String(a).toLowerCase());
 
+    // Exactly one output format per command.
+    // Explicit word wins; otherwise: admins -> text list, everything else -> vcf
+    const wantsAdmins = modes.includes('admins');
+    const format =
+        modes.includes('vcf')  ? 'vcf'  :
+        modes.includes('txt')  ? 'txt'  :
+        modes.includes('list') ? 'list' :
+        wantsAdmins            ? 'list' : 'vcf';
+
     if (!chatId.endsWith('@g.us')) {
         return sock.sendMessage(chatId, {
             text: '❌ This command only works in groups.'
@@ -292,7 +305,7 @@ module.exports = async function (sock, chatId, message, args) {
 
     try {
         // Text list: "1. Name - +number"
-        if (modes.includes('list')) {
+        if (format === 'list') {
             const body = entries
                 .map((e, i) => `${i + 1}. ${e.name ? e.name + ' - ' : ''}+${e.num}`)
                 .join('\n');
@@ -312,7 +325,7 @@ module.exports = async function (sock, chatId, message, args) {
         }
 
         // Plain txt file (numbers only)
-        if (modes.includes('txt')) {
+        if (format === 'txt') {
             return sock.sendMessage(chatId, {
                 document: Buffer.from(numbersOnly, 'utf8'),
                 mimetype: 'text/plain',
