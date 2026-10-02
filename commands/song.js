@@ -53,7 +53,7 @@ function parseSongQueries(text) {
 }
 
 /**
- * Strips the command invocation word from a line.
+ * Detects a bare command word line.
  * Handles: .song, #song, !song, /song, song — with or without prefix, case-insensitive.
  */
 function isCommandLine(line) {
@@ -73,8 +73,6 @@ function isCommandLine(line) {
 function extractHashtagSongs(text) {
 	if (!text) return { found: false, queries: [] };
 
-	// Match all occurrences of #song followed by content until next #song or end
-	// e.g. "#song Alone" or "#song Sorry / Faded"
 	const hashtagPattern = /#songs?\s+([^\#]+)/gi;
 	const matches = [...text.matchAll(hashtagPattern)];
 
@@ -127,14 +125,12 @@ function resolveQueries(message) {
 	// --- Check for #song hashtag mode first ---
 	const hashtag = extractHashtagSongs(directText);
 	if (hashtag.found) {
-		// Hashtag explicitly lists songs — ignore quoted message entirely
 		return hashtag.queries;
 	}
 
 	// --- Normal mode: direct text + optional quoted text ---
 	const quotedText = getQuotedText(message);
 
-	// Strip command word from direct text before combining
 	const directLines = directText
 		.split('\n')
 		.map(l => l.trim())
@@ -147,27 +143,46 @@ function resolveQueries(message) {
 
 	const combined = [...directLines, ...quotedLines].join('\n').trim();
 
-	// Dedup to prevent double-processing same songs from direct+quoted overlap
 	const parsed = parseSongQueries(combined);
 	return [...new Set(parsed.filter(q => q.length > 0))];
 }
 
 // ---------------------------------------------------------------------------
-// EliteProTech ytmp3 Download API
+// Download APIs
 // ---------------------------------------------------------------------------
 
 const YTMP3_QUALITY = 128;
 
+/**
+ * 0. FAA — api-faa.my.id /faa/ytmp3
+ * Response shape: { status: true, result: { mp3, title, duration, thumbnail } }
+ */
+async function getFaaDownloadByUrl(youtubeUrl) {
+	const apiUrl =
+		`https://api-faa.my.id/faa/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
+	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+	const data = res?.data;
+	if (data?.status && data?.result?.mp3) {
+		return {
+			download: data.result.mp3,
+			title: data.result.title,
+			thumbnail: data.result.thumbnail
+		};
+	}
+	throw new Error('FAA returned no download');
+}
+
+/**
+ * 1. EliteProTech — /download/ytmp3 (newer endpoint)
+ */
 async function getEliteProTechDownloadByUrl(youtubeUrl) {
 	const apiUrl =
 		`https://eliteprotech-apis.zone.id/download/ytmp3?url=${encodeURIComponent(youtubeUrl)}&quality=${YTMP3_QUALITY}`;
-	const res = await tryRequest(() =>
-		axios.get(apiUrl, AXIOS_DEFAULTS)
-	);
+	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
 	const data = res?.data;
 	console.log('[song] EliteProTech (ytmp3) response:', JSON.stringify(data));
 
-	// Defensive extraction — actual field names unconfirmed, check common shapes.
+	// Defensive extraction — field names unconfirmed, check common shapes.
 	const download =
 		data?.downloadURL ||
 		data?.download_url ||
@@ -185,11 +200,7 @@ async function getEliteProTechDownloadByUrl(youtubeUrl) {
 	if (download) {
 		return {
 			download,
-			title:
-				data?.title ||
-				data?.result?.title ||
-				data?.data?.title ||
-				null,
+			title: data?.title || data?.result?.title || data?.data?.title || null,
 			thumbnail:
 				data?.thumbnail ||
 				data?.thumb ||
@@ -203,21 +214,82 @@ async function getEliteProTechDownloadByUrl(youtubeUrl) {
 
 	throw new Error(
 		`EliteProTech (ytmp3) returned no download URL: ${
-			typeof data === 'string'
-				? data
-				: JSON.stringify(data)
+			typeof data === 'string' ? data : JSON.stringify(data)
 		}`
 	);
 }
 
+/**
+ * 2. EliteProTech — /ytdown (older endpoint, kept as extra fallback)
+ */
+async function getEliteProTechYtdownByUrl(youtubeUrl) {
+	const apiUrl =
+		`https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(youtubeUrl)}&format=mp3`;
+	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+	if (res?.data?.success && res?.data?.downloadURL) {
+		return {
+			download: res.data.downloadURL,
+			title: res.data.title
+		};
+	}
+	throw new Error('EliteProTech (ytdown) returned no download');
+}
+
+/**
+ * 3. Yupra
+ */
+async function getYupraDownloadByUrl(youtubeUrl) {
+	const apiUrl =
+		`https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
+	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+	if (res?.data?.success && res?.data?.data?.download_url) {
+		return {
+			download: res.data.data.download_url,
+			title: res.data.data.title,
+			thumbnail: res.data.data.thumbnail
+		};
+	}
+	throw new Error('Yupra returned no download');
+}
+
+/**
+ * 4. Okatsu
+ */
+async function getOkatsuDownloadByUrl(youtubeUrl) {
+	const apiUrl =
+		`https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(youtubeUrl)}`;
+	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+	if (res?.data?.dl) {
+		return {
+			download: res.data.dl,
+			title: res.data.title,
+			thumbnail: res.data.thumb
+		};
+	}
+	throw new Error('Okatsu ytmp3 returned no download');
+}
+
+/**
+ * 5. Izumi
+ */
+async function getIzumiDownloadByUrl(youtubeUrl) {
+	const apiUrl =
+		`https://izumiiiiiiii.dpdns.org/downloader/youtube?url=${encodeURIComponent(youtubeUrl)}&format=mp3`;
+	const res = await tryRequest(() => axios.get(apiUrl, AXIOS_DEFAULTS));
+	if (res?.data?.result?.download) return res.data.result;
+	throw new Error('Izumi youtube?url returned no download');
+}
+
 // ---------------------------------------------------------------------------
-// Download source
+// Download source chain (tried in order)
 // ---------------------------------------------------------------------------
 const API_METHODS = [
-	{
-		name: 'EliteProTech',
-		method: getEliteProTechDownloadByUrl
-	}
+	{ name: 'FAA',                 method: getFaaDownloadByUrl },
+	{ name: 'EliteProTech',        method: getEliteProTechDownloadByUrl },
+	{ name: 'EliteProTech-ytdown', method: getEliteProTechYtdownByUrl },
+	{ name: 'Yupra',               method: getYupraDownloadByUrl },
+	{ name: 'Okatsu',              method: getOkatsuDownloadByUrl },
+	{ name: 'Izumi',               method: getIzumiDownloadByUrl }
 ];
 
 // ---------------------------------------------------------------------------
